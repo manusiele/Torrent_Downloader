@@ -1,11 +1,4 @@
-try:
-    import libtorrent as lt
-except ImportError:
-    print("[ERROR] libtorrent not found. Installing...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "libtorrent"])
-    import libtorrent as lt
-
+import libtorrent as lt
 import time
 import os
 import sys
@@ -75,36 +68,17 @@ def download_torrent(torrent_path, save_path):
     print(f"  Output : {save_path}")
     print()
     
-    # Session settings
-    settings = {
-        'active_downloads': 10,
-        'active_seeds': 10,
-        'connections_limit': 500,
-        'download_rate_limit': 0,
-        'upload_rate_limit': 0,
-        'enable_dht': True,
-        'enable_lsd': True,
-        'enable_upnp': True,
-        'enable_natpmp': True,
-    }
+    # Create session with settings
+    params = lt.session_params()
+    params.settings.set_str(lt.settings_pack.listen_interfaces, "0.0.0.0:6881")
     
-    ses = lt.session(settings)
-    ses.listen_on(6881, 6891)
-    
-    # DHT bootstrap nodes
-    ses.add_dht_router('router.bittorrent.com', 6881)
-    ses.add_dht_router('dht.transmissionbt.com', 6881)
-    ses.add_dht_router('dht.libtorrent.org', 25401)
-    ses.start_dht()
+    ses = lt.session(params)
     
     # Add torrent
-    params = {
+    handle = ses.add_torrent({
         'ti': info,
         'save_path': save_path,
-    }
-    
-    handle = ses.add_torrent(params)
-    handle.resume()
+    })
     
     print("  Connecting to peers...")
     print()
@@ -113,9 +87,14 @@ def download_torrent(torrent_path, save_path):
     last_print = 0
     
     try:
-        while not handle.is_seed():
+        # Wait for download to complete
+        while True:
             status = handle.status()
             now = time.time()
+            
+            # Check if download is complete
+            if status.is_finished:
+                break
             
             # Update display every 0.5 seconds
             if now - last_print >= 0.5:
@@ -163,9 +142,8 @@ def download_torrent(torrent_path, save_path):
         print()
         print()
         print("  [CANCELLED] Stopping...")
-        ses.remove_torrent(handle)
         time.sleep(0.5)
-        print("  [OK] Torrent removed from session")
+        print("  [OK] Download cancelled")
         sys.exit(0)
 
 
